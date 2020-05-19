@@ -7,6 +7,7 @@ var config = require("./config/config");
 require("mongoose").connect(config.db.url, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  useCreateIndex: true,
 });
 
 //DB Seeding
