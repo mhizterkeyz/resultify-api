@@ -268,7 +268,9 @@ const getSingleResult = (courses, student, year) =>
               units: cur.course.units,
               score: 0,
               exam: 0,
-              ca: 0,
+              first_ca: 0,
+              second_ca: 0,
+              third_ca: 0,
               grade: null,
               remark: "DRP",
               points: 0,
@@ -288,28 +290,32 @@ const getSingleResult = (courses, student, year) =>
                 units: cur.course.units,
                 score: 0,
                 exam: 0,
-                ca: 0,
+                first_ca: 0,
+                second_ca: 0,
+                third_ca: 0,
                 grade: null,
                 remark: "Pending...",
                 points: 0,
               });
               return acc;
             } else {
-              const { exam, ca } = result;
+              const { exam, ca_1, ca_2, ca_3 } = result;
               const group_defaults = await GroupOptions.findOne({
                 group: student.group,
                 set: student.student_set,
               });
               const grade_data = Utils.getGradeData(
-                exam + ca,
+                exam + ca_1 + ca_2 + ca_3,
                 Utils.validateGradeSystem(group_defaults.grade_system)
               );
               acc.data.push({
                 course: cur.course.course,
                 units: cur.course.units,
-                score: exam + ca,
+                score: exam + ca_1 + ca_2 + ca_3,
                 exam,
-                ca,
+                first_ca: ca_1,
+                second_ca: ca_2,
+                third_ca: ca_3,
                 grade: grade_data.grade,
                 remark:
                   grade_data.grade.toLowerCase() === "f" ? "Failed" : "Passed",
@@ -367,28 +373,33 @@ const getSingleResultCos = (courses, student, year, semester) =>
                 units: cur.course.units,
                 score: 0,
                 exam: 0,
-                ca: 0,
+                first_ca: 0,
+                second_ca: 0,
+                third_ca: 0,
                 grade: null,
                 remark: "Pending...",
                 points: 0,
               });
               return acc;
             } else {
-              const { exam, ca } = result;
+              const { exam, ca_1, ca_2, ca_3 } = result;
+              const total = exam + ca_1 + ca_2 + ca_3;
               const group_defaults = await GroupOptions.findOne({
                 group: student.group,
                 set: student.student_set,
               });
               const grade_data = Utils.getGradeData(
-                exam + ca,
+                total,
                 Utils.validateGradeSystem(group_defaults.grade_system)
               );
               acc.data.push({
                 course: cur.course.course,
                 units: cur.course.units,
-                score: exam + ca,
+                score: total,
                 exam,
-                ca,
+                first_ca: ca_1,
+                second_ca: ca_2,
+                third_ca: ca_3,
                 grade: grade_data.grade,
                 remark:
                   grade_data.grade.toLowerCase() === "f" ? "Failed" : "Passed",
@@ -459,9 +470,9 @@ const getPreviousData = (courses, student, year, semester) =>
                 group: student.group,
                 set: student.student_set,
               });
-              const { exam, ca } = cur;
+              const { exam, ca_1, ca_2, ca_3 } = cur;
               const grade_data = Utils.getGradeData(
-                exam + ca,
+                exam + ca_1 + ca_2 + ca_3,
                 Utils.validateGradeSystem(group_defaults.grade_system)
               );
               if (grade_data.grade.toLowerCase() !== "f") {

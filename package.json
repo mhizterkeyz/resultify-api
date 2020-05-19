@@ -5,6 +5,7 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
+    "dev": "nodemon server/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "mhizterkeyz",
@@ -18,6 +19,7 @@
     "express-jwt": "^5.3.3",
     "lodash": "^4.17.15",
     "mongoose": "^5.9.15",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "nodemon": "^2.0.2"
   }
 }

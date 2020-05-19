@@ -6,9 +6,21 @@ var ResultsSchema = new Schema({
     ref: "courses",
     required: true,
   },
-  ca: {
+  ca_1: {
     type: Number,
-    max: 30,
+    max: 10,
+    required: true,
+    default: 0,
+  },
+  ca_2: {
+    type: Number,
+    max: 10,
+    required: true,
+    default: 0,
+  },
+  ca_3: {
+    type: Number,
+    max: 10,
     required: true,
     default: 0,
   },

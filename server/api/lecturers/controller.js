@@ -133,7 +133,9 @@ const getScoreSheet = (courseId, year_submitted) => {
             year_submitted,
           });
         }
-        res.ca = result.ca;
+        res.ca_1 = result.ca_1;
+        res.ca_2 = result.ca_2;
+        res.ca_3 = result.ca_3;
         res.exam = result.exam;
         res.result_status = result.result_status;
         res._id = result._id;
@@ -144,7 +146,10 @@ const getScoreSheet = (courseId, year_submitted) => {
           groupDefaults.grade_system
         );
         const gradeData = Utils.getGradeData(
-          parseInt(res.ca) + parseInt(res.exam),
+          parseInt(res.ca_1) +
+            parseInt(res.ca_2) +
+            parseInt(res.ca_3) +
+            parseInt(res.exam),
           gradeSystem
         );
         res.grade = gradeData.grade;
@@ -196,7 +201,15 @@ exports.getScoreSheet = (msg = "") => async (req, res, next) => {
   return res.status(200).json({ message: msg, data });
 };
 exports.updateScoreSheet = async (req, res, next) => {
-  if (!req.validate({ ca: "number", exam: "number" })) return;
+  if (
+    !req.validate({
+      ca_1: "number",
+      exam: "number",
+      ca_2: "number",
+      ca_3: "number",
+    })
+  )
+    return;
   try {
     const id = req.params.id;
     const result = await Results.findOne({ _id: id, result_status: 1 });
@@ -210,7 +223,9 @@ exports.updateScoreSheet = async (req, res, next) => {
         message: "This course wasn't assigned to you",
         data: {},
       });
-    result.ca = req.body.ca !== undefined ? req.body.ca : result.ca;
+    result.ca_1 = req.body.ca_1 !== undefined ? req.body.ca_1 : result.ca_1;
+    result.ca_2 = req.body.ca_2 !== undefined ? req.body.ca_2 : result.ca_2;
+    result.ca_3 = req.body.ca_3 !== undefined ? req.body.ca_3 : result.ca_3;
     result.exam = req.body.exam !== undefined ? req.body.exam : result.exam;
     const newResult = await result.save();
     const student = await Student.findById(result.student);
@@ -220,13 +235,18 @@ exports.updateScoreSheet = async (req, res, next) => {
     });
     const gradeSystem = Utils.validateGradeSystem(groupDefaults.grade_system);
     const gradeData = Utils.getGradeData(
-      parseInt(newResult.ca) + parseInt(newResult.exam),
+      parseInt(newResult.ca_1) +
+        parseInt(newResult.ca_2) +
+        parseInt(newResult.ca_3) +
+        parseInt(newResult.exam),
       gradeSystem
     );
     const data = {
       name: user.name,
       matric: student.matric,
-      ca: newResult.ca,
+      ca_1: newResult.ca_1,
+      ca_2: newResult.ca_2,
+      ca_3: newResult.ca_3,
       exam: newResult.exam,
       result_status: newResult.result_status,
       _id: newResult._id,
@@ -270,7 +290,7 @@ exports.saveScoreSheet = async (req, res, next) => {
         data: {},
       });
     const zero_results = results.reduce(function (acc, cur) {
-      if (cur.exam + cur.ca < 1) {
+      if (cur.exam + cur.ca_1 + cur.ca_2 + cur.ca_3 < 1) {
         return [...acc, cur];
       }
       return acc;

@@ -1,7 +1,7 @@
 var morgan = require("morgan");
 var bodyParser = require("body-parser");
 var CORS = require("cors");
-const validate = require("../../src/Components/landing/signup/validator");
+const validate = require("../utils/validator");
 
 module.exports = function (app) {
   app.use(morgan("dev"));
