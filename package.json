@@ -1,0 +1,23 @@
+{
+  "name": "resultify-api",
+  "version": "1.0.0",
+  "description": "Api design for result computation (resultify)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "mhizterkeyz",
+  "license": "ISC",
+  "dependencies": {
+    "bcrypt": "^4.0.1",
+    "body-parser": "^1.19.0",
+    "colors": "^1.4.0",
+    "cors": "^2.8.5",
+    "express": "^4.17.1",
+    "express-jwt": "^5.3.3",
+    "lodash": "^4.17.15",
+    "mongoose": "^5.9.15",
+    "morgan": "^1.10.0"
+  }
+}
