@@ -41,7 +41,7 @@ exports.verifyUser = function () {
         message: "Username and password is required",
         data: {},
       });
-    User.findOne({ $or: [{username}, {email: username}] }).then(
+    User.findOne({ $or: [{ username }, { email: username }] }).then(
       function (user) {
         if (!user)
           return res.status(401).json({
@@ -54,6 +54,10 @@ exports.verifyUser = function () {
             message: "Invalid credentials",
             data: {},
           });
+        if (!user.status)
+          return res
+            .status(403)
+            .json({ message: "This account has been blocked", data: {} });
         req.user = user;
         next();
       },

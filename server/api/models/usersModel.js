@@ -2,6 +2,11 @@ var { Schema, model } = require("mongoose");
 var bcrypt = require("bcrypt");
 
 var UsersSchema = new Schema({
+  status: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
   name: {
     type: String,
     required: true,
