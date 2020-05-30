@@ -10,8 +10,7 @@ router.route("/invites").get(Controller.getInvites).post(Controller.newInvite);
 router
   .route("/invites/:invite_id")
   .get(Controller.getOneInvite)
-  .delete(Controller.deleteInvite)
-  .put(Controller.updateInvite);
+  .delete(Controller.deleteInvite);
 
 /**
  * Group Routes

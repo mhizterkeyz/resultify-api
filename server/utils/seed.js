@@ -25,7 +25,15 @@ var user = {
   lga: "Olamaboro",
   address: "Earth",
   phone: 234801112222,
+  root: true,
 };
+const invites = [
+  {
+    email: "jamal@gmail.com",
+    role: "administrator",
+    created_at: Date.now(),
+  },
+];
 
 var cleanDb = function () {
   logger.log("...cleaning the DB");
@@ -54,6 +62,13 @@ cleanDb()
       if (err) return logger.error(err.stack);
       logger.log("DB seeded with an administrator");
     });
+    Promise.all(
+      invites.map((e) =>
+        Invites.create(e, (err) => {
+          if (err) return logger.error(err.stack);
+        })
+      )
+    );
   })
   .catch(function (err) {
     logger.error(err.stack);

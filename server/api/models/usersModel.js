@@ -21,6 +21,7 @@ var UsersSchema = new Schema({
     unique: true,
     required: true,
   },
+  root: { type: Boolean, required: true, default: false },
   password: {
     type: String,
     required: true,

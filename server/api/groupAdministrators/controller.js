@@ -11,106 +11,15 @@ var Results = require("../models/resultsModel");
 var Utils = require("../../utils/util");
 var SignToken = require("../../auth/auth").signToken;
 var _ = require("lodash");
+const CommonFunctions = require("../commonFunctions");
 
 /**
  * Inviting new administrators...
  */
-exports.getInvites = function (req, res, next) {
-  Invites.find({ $or: [{ role: "lecturer" }, { role: "student" }] }).then(
-    function (invites) {
-      var invite = invites.map(function (elem) {
-        return elem.toJson();
-      });
-      res.status(200).json({
-        message: "",
-        data: invite,
-      });
-    },
-    function (err) {
-      next(err);
-    }
-  );
-};
-exports.newInvite = function (req, res, next) {
-  if (
-    !req.validate({
-      type: "required|boolean",
-    })
-  )
-    return;
-  var inviteType = req.body.type ? "student" : "lecturer";
-  Invites.create({ role: inviteType, created_at: Date.now().toString() }).then(
-    function (saved) {
-      res.status(200).json({
-        message: "Invite Created!",
-        data: saved.toJson(),
-      });
-    },
-    function (err) {
-      next(err);
-    }
-  );
-};
-exports.deleteInvite = function (req, res, next) {
-  var id = req.params.invite_id;
-  Invites.findByIdAndDelete(id, function (err, removed) {
-    if (err) return next(err);
-    if (removed)
-      return res.status(200).json({
-        message: "Invite deleted!",
-        data: removed,
-      });
-    return res.status(404).json({
-      message: "Could not find invite",
-      data: {},
-    });
-  });
-};
-exports.getOneInvite = function (req, res, next) {
-  var id = req.params.invite_id;
-  Invites.findById(id, function (err, invite) {
-    if (err) return next(err);
-    if (invite)
-      return res.status(200).json({
-        message: "",
-        data: invite.toJson(),
-      });
-    return res.status(404).json({
-      message: "Could not find invite",
-      data: {},
-    });
-  });
-};
-exports.updateInvite = function (req, res, next) {
-  if (
-    !req.validate({
-      type: "required|boolean",
-    })
-  )
-    return;
-  var id = req.params.invite_id;
-  if (req.body.id) delete req.body.id;
-  if (req.body.created_at) delete req.body.created_at;
-  req.body.role = req.body.type ? "student" : "lecturer";
-  if (req.body.type) delete req.body.type;
-  Invites.findById(id, function (err, invite) {
-    if (err) return next(err);
-    if (invite) {
-      _.merge(invite, req.body);
-      return invite.save(function (err, saved) {
-        if (err) return next(err);
-        return res.status(200).json({
-          message: "Invite updated!",
-          data: saved,
-        });
-      });
-    }
-    return res.status(404).json({
-      message: "Could not find invite.",
-      data: {},
-    });
-  });
-};
+CommonFunctions.inviteFunctions(exports, {
+  first: { type: "lecturer", msg: "A lecturer's" },
+  second: { type: "student", msg: "A student's" },
+});
 
 /**
  * Group Operations

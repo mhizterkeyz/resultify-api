@@ -14,21 +14,31 @@ exports.decodeToken = function () {
 };
 
 exports.getFreshUser = function () {
-  return function (req, res, next) {
-    User.findById(req.user.data._id).then(
-      function (user) {
-        if (!user)
-          return res.status(401).json({
-            message: "You can't access this resource!",
-            data: {},
-          });
-        req.user = user;
-        next();
-      },
-      function (err) {
-        next(err);
-      }
-    );
+  return async function (req, res, next) {
+    // User.findById(req.user.data._id).then(
+    //   function (user) {
+    //     if (!user || !user.status)
+    //       return res.status(401).json({
+    //         message: "You can't access this resource!",
+    //         data: {},
+    //       });
+    //     req.user = user;
+    //     next();
+    //   },
+    //   function (err) {
+    //     next(err);
+    //   }
+    // );
+    try {
+      const user = await User.findOne({
+        status: true,
+        user_role: "administrator",
+      });
+      req.user = user;
+      return next();
+    } catch (e) {
+      return next(e);
+    }
   };
 };
 

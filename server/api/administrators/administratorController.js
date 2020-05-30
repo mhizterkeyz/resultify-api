@@ -10,6 +10,7 @@ const GroupOptions = require("../models/groupOptionsModel");
 var _ = require("lodash");
 var Invites = require("../models/invitesModel");
 var SignToken = require("../../auth/auth").signToken;
+const CommonFunctions = require("../commonFunctions");
 
 /**
  * App Options/Default
@@ -49,113 +50,25 @@ exports.appDefaults = function (returnResults = false, msg = "") {
 /**
  * Inviting new administrators...
  */
-exports.getInvites = function (req, res, next) {
-  Invites.find({
-    $or: [{ role: "administrator" }, { role: "groupAdministrator" }],
-  }).then(
-    function (invites) {
-      var invite = invites.map(function (elem) {
-        return elem.toJson();
-      });
-      res.status(200).json({
-        message: "",
-        data: invite,
-      });
-    },
-    function (err) {
-      next(err);
-    }
-  );
-};
-exports.newInvite = function (req, res, next) {
-  if (
-    !req.validate({
-      type: "required|boolean",
-    })
-  )
-    return;
-  var inviteType = req.body.type ? "administrator" : "groupAdministrator";
-  Invites.create({ role: inviteType, created_at: Date.now().toString() }).then(
-    function (saved) {
-      res.status(200).json({
-        message: "Invite Created!",
-        data: saved.toJson(),
-      });
-    },
-    function (err) {
-      next(err);
-    }
-  );
-};
-exports.deleteInvite = function (req, res, next) {
-  var id = req.params.invite_id;
-  Invites.findByIdAndDelete(id, function (err, removed) {
-    if (err) return next(err);
-    if (removed)
-      return res.status(200).json({
-        message: "Invite deleted!",
-        data: removed,
-      });
-    return res.status(404).json({
-      message: "Could not find invite",
-      data: {},
-    });
-  });
-};
-exports.getOneInvite = function (req, res, next) {
-  var id = req.params.invite_id;
-  Invites.findById(id, function (err, invite) {
-    if (err) return next(err);
-    if (invite)
-      return res.status(200).json({
-        message: "",
-        data: invite.toJson(),
-      });
-    return res.status(404).jsonn({
-      message: "Could not find invite",
-      data: {},
-    });
-  });
-};
-exports.updateInvite = function (req, res, next) {
-  if (
-    !req.validate({
-      type: "required|boolean",
-    })
-  )
-    return;
-  var id = req.params.invite_id;
-  if (req.body.id) delete req.body.id;
-  if (req.body.created_at) delete req.body.created_at;
-  req.body.role = req.body.type ? "administrator" : "groupAdministrator";
-  if (req.body.type) delete req.body.type;
-  Invites.findById(id, function (err, invite) {
-    if (err) return next(err);
-    if (invite) {
-      _.merge(invite, req.body);
-      return invite.save(function (err, saved) {
-        if (err) return next(err);
-        return res.status(200).json({
-          message: "Invite updated!",
-          data: saved,
-        });
-      });
-    }
-    return res.status(404).json({
-      message: "Could not find invite.",
-      data: {},
-    });
-  });
-};
+CommonFunctions.inviteFunctions(exports, {
+  first: { type: "administrator", msg: "An administrator's" },
+  second: { type: "groupAdministrator", msg: "An exam officer's" },
+});
 
 /**
  * Operation on App's Administrator
  */
+
+//Gets group administrator based on passed id
 exports.adminRoute = function (req, res, next) {
   var id = req.params.id;
   Users.findById(id).then(
     function (user) {
-      if (!user || user.user_role === "student")
+      if (
+        !user ||
+        user.user_role === "student" ||
+        user.user_role === "lecturer"
+      )
         return next(new Error("No admin with that id"));
       req.user = user.toJson();
       next();
@@ -208,6 +121,7 @@ exports.createAppAdmin = function (req, res, next) {
           .status(400)
           .json({ message: "Invalid invite token!", data: {} });
       user.user_role = invite.role;
+      user.root && delete user.root;
       return Users.create(user, function (err, created) {
         if (err) return next(err);
         var access_token = SignToken(created._id);
