@@ -19,7 +19,6 @@ router.use(require("./administrators/administratorController").appDefaults());
  */
 router.post(
   "/administrator",
-  require("./groupAdministrators/controller").EFAD(true),
   require("./administrators/administratorController").createAppAdmin
 );
 router.post(

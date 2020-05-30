@@ -54,7 +54,7 @@ exports.inviteFunctions = (exports, options) => {
         message: "",
         data: _.orderBy(
           invites.map((elem) => elem.toJson()),
-          { status: "Blocked" }
+          { status: false }
         ),
       });
     } catch (e) {
@@ -91,4 +91,10 @@ exports.inviteFunctions = (exports, options) => {
       return next(e);
     }
   };
+};
+exports.userUpdateProtection = (req) => {
+  req.body.id && delete req.body.id;
+  req.body.user_role && delete req.body.user_role;
+  req.body.root && delete req.body.root;
+  req.body.status && delete req.body.status;
 };

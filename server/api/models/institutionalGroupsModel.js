@@ -10,6 +10,11 @@ var InstitutionalGroupsSchema = new Schema({
     type: String,
     required: true,
   },
+  status: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
   group_admin: {
     type: Schema.Types.ObjectId,
     ref: "Users",

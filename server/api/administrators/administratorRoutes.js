@@ -1,8 +1,6 @@
 var router = require("express").Router();
 var Controller = require("./administratorController");
 
-router.use(require("../groupAdministrators/controller").EFAD(true, true));
-
 /**
  * Invites routes
  */
@@ -23,40 +21,19 @@ router
   .get(require("../lecturers/controller").notifications);
 
 /**
- * Result Operations
- */
-router
-  .route("/results")
-  .get(Controller.get_results())
-  .delete(
-    require("../groupAdministrators/controller").extractCourse(),
-    Controller.reject_result,
-    Controller.get_results("Result rejected for reanalysis")
-  )
-  .put(Controller.save_result, Controller.get_results("Result approved"));
-
-/**
  * GroupRoutes
  */
 router.route("/groups/admins").get(Controller.getGroupAdmins);
 router
   .route("/groups/admins/:id")
-  .get(
-    Controller.adminRoute,
-    Controller.routeProtect("groupAdministrator"),
-    Controller.getOneAdmin
-  )
-  .delete(
-    Controller.adminRoute,
-    Controller.routeProtect("groupAdministrator"),
-    Controller.deleteAdmin
-  );
+  .get(Controller.adminRoute, Controller.getOneAdmin)
+  .delete(Controller.adminRoute, Controller.deleteAdmin)
+  .put(Controller.adminRoute, Controller.unblockAdmin);
 router.route("/groups").get(Controller.getGroups).post(Controller.addGroup);
 router
   .route("/groups/:id")
   .get(Controller.groupRoute, Controller.getOneGroup)
-  .put(Controller.groupRoute, Controller.updateGroup)
-  .delete(Controller.groupRoute, Controller.deleteGroup);
+  .put(Controller.groupRoute, Controller.updateGroup);
 
 /**
  * App options
@@ -86,13 +63,25 @@ router
       data: req.user.toJson(),
     });
   })
-  .put(Controller.updateAdmin);
+  .put(Controller.updateAdminSelf);
 router
   .route("/:id")
-  .get(
-    Controller.adminRoute,
-    Controller.routeProtect("administrator"),
-    Controller.getOneAdmin
-  );
+  .get(Controller.adminRoute, Controller.getOneAdmin)
+  .delete(Controller.adminRoute, Controller.deleteAppAdmin)
+  .put(Controller.adminRoute, Controller.updateAdmin);
+
+/**
+ * Result Operations
+ */
+router.use(require("../groupAdministrators/controller").EFAD(true, true));
+router
+  .route("/results")
+  .get(Controller.get_results())
+  .delete(
+    require("../groupAdministrators/controller").extractCourse(),
+    Controller.reject_result,
+    Controller.get_results("Result rejected for reanalysis")
+  )
+  .put(Controller.save_result, Controller.get_results("Result approved"));
 
 module.exports = router;

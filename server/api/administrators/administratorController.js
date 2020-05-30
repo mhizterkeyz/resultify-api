@@ -59,7 +59,7 @@ CommonFunctions.inviteFunctions(exports, {
  * Operation on App's Administrator
  */
 
-//Gets group administrator based on passed id
+//Gets group/app administrator based on passed id
 exports.adminRoute = function (req, res, next) {
   var id = req.params.id;
   Users.findById(id).then(
@@ -69,8 +69,10 @@ exports.adminRoute = function (req, res, next) {
         user.user_role === "student" ||
         user.user_role === "lecturer"
       )
-        return next(new Error("No admin with that id"));
-      req.user = user.toJson();
+        return res
+          .status(404)
+          .json({ message: "No admin with that ID", data: {} });
+      req.req_user = user;
       next();
     },
     function (err) {
@@ -79,6 +81,10 @@ exports.adminRoute = function (req, res, next) {
   );
 };
 exports.getAppAdmins = function (req, res, next) {
+  if (!req.user.root)
+    return res
+      .status(403)
+      .json({ message: "You can't access this resource", data: {} });
   Users.find({ user_role: "administrator" }).then(
     function (admins) {
       var data = admins.map(function (elem) {
@@ -86,13 +92,43 @@ exports.getAppAdmins = function (req, res, next) {
       });
       res.status(200).json({
         message: "",
-        data,
+        data: _.orderBy(data, { status: false }),
       });
     },
     function (err) {
       next(err);
     }
   );
+};
+const toggleUserState = async (user, val) => {
+  user.status = val;
+  try {
+    return (await user.save()).toJson();
+  } catch (e) {
+    throw new Error(e);
+  }
+};
+exports.deleteAppAdmin = async (req, res, next) => {
+  if (!req.user.root)
+    return res
+      .status(403)
+      .json({ message: "You can't access this resource", data: {} });
+  if (req.req_user.root)
+    return res
+      .status(403)
+      .json({ message: "You can't block the root administrator", data: {} });
+  if (req.req_user.user_role !== "administrator")
+    return res
+      .status(404)
+      .json({ message: "Could not find administrator", data: {} });
+  try {
+    return res.status(200).json({
+      message: "Administrator blocked",
+      data: await toggleUserState(req.req_user, false),
+    });
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.createAppAdmin = function (req, res, next) {
   if (
@@ -136,17 +172,34 @@ exports.createAppAdmin = function (req, res, next) {
     return res.status(400).json({ message: "Invalid invite token!", data: {} });
   });
 };
-exports.updateAdmin = function (req, res, next) {
-  if (req.body.id) delete req.body.id;
-  if (req.body.user_role) delete req.body.user_role;
+exports.updateAdminSelf = function (req, res, next) {
+  CommonFunctions.userUpdateProtection(req);
   _.merge(req.user, req.body);
   req.user.save(function (err, saved) {
     if (err) return next(err);
     res.status(200).json({
-      message: "Administrator updated",
+      message: "Account updated",
       data: saved.toJson(),
     });
   });
+};
+exports.updateAdmin = async (req, res, next) => {
+  if (!req.user.root)
+    return res
+      .status(403)
+      .json({ message: "You can't access this resource", data: {} });
+  if (req.req_user.user_role !== "administrator")
+    return res
+      .status(404)
+      .json({ message: "Could not find administrator", data: {} });
+  try {
+    return res.status(200).json({
+      message: "Administrator unblocked",
+      data: await toggleUserState(req.req_user, true),
+    });
+  } catch (e) {
+    return next(e);
+  }
 };
 
 /**
@@ -757,11 +810,14 @@ exports.save_result = async (req, res, next) => {
 exports.groupRoute = function (req, res, next) {
   var id = req.params.id;
   InstitutionalGroups.findById(id)
-    .populate("group_admin", "_id name email")
+    .populate("group_admin", "_id name email status")
     .exec()
     .then(
       function (group) {
-        if (!group) return next(new Error("No group with that id"));
+        if (!group)
+          return res
+            .status(404)
+            .json({ message: "No group with that ID", data: {} });
         req.group = group;
         next();
       },
@@ -778,7 +834,7 @@ exports.getGroupAdmins = function (req, res, next) {
       });
       res.status(200).json({
         message: "",
-        data: result,
+        data: _.orderBy(result, { status: false }),
       });
     },
     function (err) {
@@ -786,8 +842,14 @@ exports.getGroupAdmins = function (req, res, next) {
     }
   );
 };
-exports.getOneAdmin = function (req, res, next) {
-  var admin = req.user;
+exports.getOneAdmin = async (req, res, next) => {
+  const admin = req.req_user.toJson();
+  if ((req.req_user.user_role = "groupAdministrator")) {
+    const groups = await InstitutionalGroups.find({
+      group_admin: req.req_user._id,
+    });
+    admin.alloted = groups;
+  }
   return res.status(200).json({
     message: "",
     data: admin,
@@ -795,13 +857,13 @@ exports.getOneAdmin = function (req, res, next) {
 };
 exports.getGroups = function (req, res, next) {
   InstitutionalGroups.find({})
-    .populate("group_admin", "_id name email")
+    .populate("group_admin", "_id name email status")
     .exec()
     .then(
       function (group) {
         res.status(200).json({
           message: "",
-          data: group,
+          data: _.orderBy(group, { status: false }),
         });
       },
       function (err) {
@@ -816,29 +878,27 @@ exports.getOneGroup = function (req, res, next) {
     data: group,
   });
 };
-exports.deleteAdmin = function (req, res, next) {
-  InstitutionalGroups.find({ group_admin: req.user.id })
-    .then(function (groups) {
-      var savePromises = groups.map(function (elem) {
-        elem.group_admin = null;
-        return elem.save();
-      });
-      return Promise.all(savePromises);
-    })
-    .then(function (...promises) {
-      return req.user.remove();
-    })
-    .then(function (removed) {
-      return res.status(200).json({
-        message:
-          "Administrator deleted and all related Academic groups have no administrator now.",
-        data: removed,
-      });
-    })
-    .catch(function (err) {
-      next(err);
+exports.deleteAdmin = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      message: "Exam officer blocked",
+      data: await toggleUserState(req.req_user, false),
     });
+  } catch (e) {
+    return next(e);
+  }
 };
+exports.unblockAdmin = async (req, res, next) => {
+  try {
+    return res.status(200).json({
+      message: "Exam officer unblocked",
+      data: await toggleUserState(req.req_user, true),
+    });
+  } catch (e) {
+    return next(e);
+  }
+};
+
 exports.addGroup = function (req, res, next) {
   var newGroup = _.merge(req.body, {
     faculty: req.body.faculty.toLowerCase(),
@@ -911,24 +971,4 @@ exports.updateGroup = function (req, res, next) {
     .catch(function (err) {
       next(err);
     });
-};
-exports.deleteGroup = function (req, res, next) {
-  var group = req.group;
-  group.remove(function (err, deleted) {
-    if (err) return next(err);
-    return res.status(200).json({
-      message: "Group deleted!",
-      data: deleted,
-    });
-  });
-};
-
-exports.routeProtect = function (criteria) {
-  return function (req, res, next) {
-    if (req.user.user_role !== criteria)
-      return res
-        .status(400)
-        .json({ message: "No admin with that id!", data: {} });
-    next();
-  };
 };

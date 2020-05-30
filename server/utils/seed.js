@@ -15,18 +15,33 @@ var logger = require("./logger");
 
 logger.log("Seeding the database");
 
-var user = {
-  name: "Mr. George McReynolds",
-  username: "admin",
-  password: "12345678",
-  email: "george@gmail.com",
-  user_role: "administrator",
-  state_of_origin: "Kogi",
-  lga: "Olamaboro",
-  address: "Earth",
-  phone: 234801112222,
-  root: true,
-};
+var users = [
+  {
+    name: "Mr. George McReynolds",
+    username: "admin",
+    password: "12345678",
+    email: "george@gmail.com",
+    user_role: "administrator",
+    state_of_origin: "Kogi",
+    lga: "Olamaboro",
+    address: "Earth",
+    phone: 234801112222,
+    root: true,
+  },
+  {
+    name: "Mr. George McReynolds",
+    username: "admin2",
+    password: "12345678",
+    email: "george2@gmail.com",
+    user_role: "groupAdministrator",
+    state_of_origin: "Kogi",
+    lga: "Olamaboro",
+    address: "Earth",
+    phone: 234801112222,
+    root: false,
+    status: true,
+  },
+];
 const invites = [
   {
     email: "jamal@gmail.com",
@@ -50,17 +65,17 @@ var cleanDb = function () {
     Notifications,
     Results,
     Students,
-  ].map(function (model) {
-    return model.deleteOne().exec();
+  ].map(async (model) => {
+    const content = await model.find();
+    return content.map(async (elem) => elem.delete());
   });
   return Promise.all(cleanPromises);
 };
 
 cleanDb()
   .then(function (res) {
-    User.create(user, function (err, user) {
+    User.create(users, function (err, user) {
       if (err) return logger.error(err.stack);
-      logger.log("DB seeded with an administrator");
     });
     Promise.all(
       invites.map((e) =>

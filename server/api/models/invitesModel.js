@@ -25,8 +25,6 @@ InvitesSchema.methods = {
     var invite = this.toObject();
     invite.invite_token = invite._id;
     delete invite._id;
-    invite.status =
-      invite.status === 0 ? "Active" : invite.status === 1 ? "Used" : "Blocked";
     return invite;
   },
 };
