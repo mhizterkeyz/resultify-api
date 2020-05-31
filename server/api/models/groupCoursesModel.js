@@ -6,6 +6,11 @@ var GroupCoursesSchema = new Schema({
     ref: "courses",
     required: true,
   },
+  status: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
   course_type: {
     type: Boolean,
     default: true,
@@ -21,13 +26,5 @@ var GroupCoursesSchema = new Schema({
     required: true,
   },
 });
-
-GroupCoursesSchema.methods = {
-  toJson: function () {
-    var res = this.toObject();
-    res.course_type = res.course_type ? "CORE" : "ELECTIVE";
-    return res;
-  },
-};
 
 module.exports = model("group_courses", GroupCoursesSchema);

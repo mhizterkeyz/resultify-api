@@ -23,21 +23,21 @@ router
 router
   .route("/groups/courses/:id")
   .get(Controller.getOneGroupCourse())
-  .delete(Controller.getOneGroupCourse(true), Controller.deleteGroupCourse)
   .put(
     Controller.extractCourse(),
     Controller.getOneGroupCourse(true),
     Controller.updateGroupCourse
-  );
+  )
+  .delete(Controller.getOneGroupCourse(true), Controller.deleteGroupCourse);
 router.route("/groups/:id").get(Controller.getOneGroup);
 router
-  .route("/groups/groupoptions/:id")
-  .get(Controller.groupRoute, Controller.getGroupDefault())
-  .put(
-    Controller.groupRoute,
-    Controller.getGroupDefault(true),
-    Controller.updateGroupDefault
-  );
+  .route("/groupoptions")
+  .get(Controller.getAllGroupDefaults)
+  .post(Controller.EFAD(true), Controller.newGroupDefault());
+router
+  .route("/groupoptions/:id/:set")
+  .get(Controller.getGroupDefault())
+  .put(Controller.getGroupDefault(true), Controller.updateGroupDefault);
 
 /**
  * Lecturer Operations
@@ -46,11 +46,8 @@ router.route("/lecturers").get(Controller.getLecturers);
 router
   .route("/lecturers/:id")
   .get(Controller.getOneLecturer)
-  .delete(
-    Controller.deleteLecturerChainUser,
-    Controller.deleteLecturerChainLecturer,
-    Controller.deleteLecturer
-  );
+  .delete(Controller.deleteLecturer)
+  .put(Controller.unblockLecturer);
 
 /**
  * Student Operations
@@ -59,7 +56,8 @@ router.route("/students").get(Controller.getStudents);
 router
   .route("/students/:id")
   .get(Controller.studentParamRoute, Controller.getOneStudent)
-  .delete(Controller.studentParamRoute, Controller.deleteStudent);
+  .delete(Controller.studentParamRoute, Controller.deleteStudent)
+  .put(Controller.studentParamRoute, Controller.updateStudent);
 
 /**
  * Course Operations

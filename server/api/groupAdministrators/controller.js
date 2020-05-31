@@ -25,7 +25,7 @@ CommonFunctions.inviteFunctions(exports, {
  * Group Operations
  */
 exports.groupRoute = function (req, res, next) {
-  Group.findOne({ _id: req.params.id, group_admin: req.user._id })
+  Group.findOne({ _id: req.params.id, group_admin: req.user._id, status: true })
     .then(function (group) {
       if (group) {
         req.group = group;
@@ -41,17 +41,33 @@ exports.groupRoute = function (req, res, next) {
       next(err);
     });
 };
+const assignedGroupPopulated = async (query) => {
+  try {
+    return await query
+      .populate({ path: "group_admin", select: "name email _id status" })
+      .exec();
+  } catch (e) {
+    throw e;
+  }
+};
 exports.getAssignedGroups = function (attachToReq = false) {
   return function (req, res, next) {
-    Group.find({ group_admin: req.user._id })
+    assignedGroupPopulated(
+      Group.find({ group_admin: req.user._id, status: true })
+    )
       .then(function (groups) {
         var result = groups.map(function (group) {
           var g = group.toObject();
-          delete g.group_admin;
           return g;
         });
         if (attachToReq) {
           req.assigned_groups = result || {};
+          req.group_or = req.assigned_groups.reduce(
+            (acc, cur) => {
+              return [...acc, { group: cur._id }];
+            },
+            [{}]
+          );
           return next();
         }
         res.status(200).json({
@@ -66,11 +82,12 @@ exports.getAssignedGroups = function (attachToReq = false) {
 };
 exports.getOneGroup = function (req, res, next) {
   var id = req.params.id;
-  Group.findOne({ _id: id, group_admin: req.user._id })
+  assignedGroupPopulated(
+    Group.findOne({ _id: id, group_admin: req.user._id, status: true })
+  )
     .then(function (group) {
       if (group) {
         var g = group.toObject();
-        delete g.group_admin;
         return res.status(200).json({
           message: "",
           data: g,
@@ -84,57 +101,64 @@ exports.getOneGroup = function (req, res, next) {
       next(err);
     });
 };
+const latestGroupDefault = async (groups, year = new Date().getFullYear()) => {
+  try {
+    return await groups.reduce(async (acc, group) => {
+      const chk = await GroupOptions.findOne({ group: group._id, set: year });
+      if (chk) return [...acc, chk];
+      return [
+        ...acc,
+        await GroupOptions.create({ group: group._id, set: year }),
+      ];
+    }, []);
+  } catch (e) {
+    throw e;
+  }
+};
+exports.getAllGroupDefaults = async (req, res, next) => {
+  try {
+    await latestGroupDefault(req.assigned_groups);
+    const options = await GroupOptions.find({ $or: req.group_or }).populate({
+      path: "group",
+      select: "faculty status department _id group_admin",
+      populate: { path: "group_admin", select: "name email _id status" },
+    });
+    const done = [];
+    const optionsRearranged = options.reduce((acc, cur) => {
+      return _.merge(acc, {
+        [`${cur.set - 1}/${cur.set}`]: { [cur.group.department]: cur },
+      });
+    }, {});
+    return res.status(200).json({ message: "", data: optionsRearranged });
+  } catch (e) {
+    return next(e);
+  }
+};
 exports.getGroupDefault = function (attachToReq = false) {
   return function (req, res, next) {
-    req.validate({ set: "required|number" }) &&
-      GroupOptions.find({ group: req.group._id })
-        .populate("group", "_id faculty department")
-        .exec()
-        .then(function (options) {
-          if (options) {
-            var opt = _.find(options, { set: req.body.set });
-            if (opt) {
-              if (attachToReq) {
-                req.group_defaults = opt;
-                next();
-              } else {
-                res.status(200).json({ message: "", data: opt });
-              }
-              return false;
-            }
+    const { id: _id, set } = req.params;
+    GroupOptions.findOne({ _id, set, $or: req.group_or })
+      .populate({
+        path: "group",
+        select: "_id faculty department group_admin",
+        populate: { path: "group_admin", select: "name email _id status" },
+      })
+      .exec()
+      .then(function (options) {
+        if (options) {
+          if (attachToReq) {
+            req.group_defaults = options;
+            next();
           }
-          return GroupOptions.create({
-            set: req.body.set,
-            group: req.group._id,
-          });
-        })
-        .then(function (created) {
-          if (created) {
-            var result = created.toObject();
-            result.group = {
-              _id: req.group._id,
-              faculty: req.group.faculty,
-              department: req.group.department,
-            };
-            if (attachToReq) {
-              created.group = {
-                _id: req.group._id,
-                faculty: req.group.faculty,
-                department: req.group.department,
-              };
-              req.group_defaults = created;
-              next();
-            } else {
-              res.status(200).json({
-                message: "",
-                data: result,
-              });
-            }
-          }
-        })
-        .catch(function (err) {
-          next(err);
-        });
+          return res.status(200).json({ message: "", data: options });
+        }
+        return res
+          .status(404)
+          .json({ message: "Options not initiated yet", data: {} });
+      })
+      .catch(function (err) {
+        next(err);
+      });
   };
 };
 exports.updateGroupDefault = function (req, res, next) {
@@ -166,6 +190,34 @@ exports.updateGroupDefault = function (req, res, next) {
     });
   });
 };
+exports.newGroupDefault = (attachToReq = false) => async (req, res, next) => {
+  if (
+    !req.validate({
+      faculty: "string|required",
+      department: "string|required",
+      set: "number",
+    })
+  )
+    return;
+  const { set } = req.body;
+  try {
+    const [{ _id }] = await latestGroupDefault([req.group], set);
+    const def = await GroupOptions.findOne({ _id })
+      .populate({
+        path: "group",
+        select: "group_admin faculty department status _id",
+        populate: { path: "group_admin", select: "name email _id status" },
+      })
+      .exec();
+    if (attachToReq) {
+      req.group_defaults = def;
+      return next();
+    }
+    return res.status(200).json({ message: "", data: def });
+  } catch (e) {
+    return next(e);
+  }
+};
 
 /**
  * Lecturer Operations
@@ -173,8 +225,12 @@ exports.updateGroupDefault = function (req, res, next) {
 exports.getLecturers = async (req, res, next) => {
   try {
     const lecturers = await Lecturers.find()
-      .populate("personal_info", "_id name email")
-      .populate("group", "_id faculty department")
+      .populate("personal_info", "_id name email status")
+      .populate({
+        path: "group",
+        select: "_id faculty department status group_admin",
+        populate: { path: "group_admin", select: "name email _id status" },
+      })
       .exec();
     const result = [];
     lecturers.forEach(function (elem) {
@@ -189,208 +245,225 @@ exports.getLecturers = async (req, res, next) => {
     next(err);
   }
 };
-exports.getOneLecturer = function (req, res, next) {
-  var id = req.params.id;
-  Users.findById(id)
-    .then(function (user) {
-      if (user)
-        return Lecturers.find({ personal_info: user._id })
-          .populate("personal_info", "name email _id")
-          .populate("courses_assigned", "course _id")
-          .populate("group", "faculty department _id")
-          .exec();
-      res.status(404).json({ message: "Lecturer not found!", data: {} });
+exports.getOneLecturer = async (req, res, next) => {
+  const _id = req.params.id;
+  const $or = req.group_or;
+  try {
+    const lecturer = await Lecturers.findOne({ _id, $or })
+      .populate("personal_info", "name email _id status")
+      .populate({
+        path: "group",
+        select: "_id faculty department status group_admin",
+        populate: { path: "group_admin", select: "name email _id status" },
+      })
+      .exec();
+    if (!lecturer)
+      return res.status(404).json({ message: "Lecturer not found", data: {} });
+    return res.status(200).json({ message: "", data: lecturer });
+  } catch (e) {
+    return next(e);
+  }
+};
+const userStateToggle = async (req, res, next, message, state, user_role) => {
+  var _id = req.params.id;
+  try {
+    const lecturer = await Users.findOne({ _id, user_role });
+    if (!lecturer)
+      return res.status(404).json({ message: "Could not find", data: {} });
+    lecturer.status = state;
+    return res.status(200).json({
+      message,
+      data: (await lecturer.save()).toJson(),
+    });
+  } catch (e) {
+    return next(e);
+  }
+};
+const lecturerOwnershipCheck = async (req, res, next) => {
+  const _id = req.params.id;
+  try {
+    const lecturer = await Lecturers.findOne({ _id, $or: req.group_or });
+    if (!lecturer) {
+      res.status(404).json({ message: "Lecturer not found", data: {} });
       return false;
-    })
-    .then(function (lecturer) {
-      if (lecturer)
-        res.status(200).json({
-          message: "",
-          data: lecturer,
-        });
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+    }
+    req.params.id = lecturer.personal_info;
+    return true;
+  } catch (e) {
+    next(e);
+    return false;
+  }
 };
-exports.deleteLecturerChainUser = function (req, res, next) {
-  var id = req.params.id;
-  Users.findById(id)
-    .then(function (user) {
-      if (user) {
-        req.lecturer_user = user;
-        return next();
-      }
-      return res.status(404).json({ message: "Lecturer not found!", data: {} });
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+exports.deleteLecturer = async (req, res, next) => {
+  (await lecturerOwnershipCheck(req, res, next)) &&
+    userStateToggle(
+      req,
+      res,
+      next,
+      "Lecturer blocked",
+      false,
+      "lecturer",
+      "Could not find lecturer"
+    );
 };
-exports.deleteLecturerChainLecturer = function (req, res, next) {
-  Lecturers.findOne({ personal_info: req.lecturer_user._id })
-    .populate("personal_info", "name _id")
-    .populate("courses_assigned", "course")
-    .populate("group", "faculty department _id")
-    .exec()
-    .then(function (lecturer) {
-      if (
-        lecturer &&
-        _.find(req.assigned_groups, { _id: lecturer.group._id })
-      ) {
-        req.lecturer = lecturer;
-        return next();
-      }
-      res
-        .status(403)
-        .json({ message: "You can't remove this lecturer.", data: {} });
-      return false;
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+exports.unblockLecturer = async (req, res, next) => {
+  (await lecturerOwnershipCheck(req, res, next)) &&
+    userStateToggle(req, res, next, "Lecturer unblocked", true, "lecturer");
 };
-exports.deleteLecturer = function (req, res, next) {
-  Course.find({ lecturer: req.lecturer._id })
-    .then(function (courses) {
-      courses.forEach(function (elem) {
-        elem.lecturer = null;
-        elem.save();
-      });
-      req.lecturer_user.remove();
-      req.lecturer.remove(function (err, removed) {
-        if (err) return next(err);
-        res.status(200).json({
-          message:
-            "Lecturer has been removed and all associated courses have no lecturer now.",
-          data: {},
-        });
-      });
-    })
-    .catch(function (err) {
-      next(err);
-    });
-};
-
 /**
  * Student Operations
  */
-exports.getStudents = function (req, res, next) {
-  var findQuery = req.query;
-  Students.find(findQuery)
-    .populate("personal_data", "name email _id")
-    .populate("group", "faculty department _id")
-    .exec()
-    .then(function (students) {
-      var result = [];
-      students.forEach(function (student) {
-        if (_.find(req.assigned_groups, { _id: student.group._id }))
-          result.push(student);
-      });
-      res.status(200).json({ message: "", data: result });
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+exports.getStudents = async (req, res, next) => {
+  try {
+    const students = await Students.find({ $or: req.group_or })
+      .populate("personal_data", "name email _id status")
+      .populate({
+        path: "group",
+        select: "faculty department _id status group_admin",
+        populate: {
+          path: "group_admin",
+          select: "name email status _id",
+        },
+      })
+      .exec();
+    return res.status(200).json({ message: "", data: students });
+  } catch (e) {
+    return next(e);
+  }
 };
-exports.studentParamRoute = function (req, res, next) {
-  var id = req.params.id;
-  Students.findById(id)
-    .populate("personal_data", "name email _id")
-    .populate("group", "faculty department _id")
-    .exec()
-    .then(function (student) {
-      if (student) {
-        req.student = student;
-        return next();
-      }
-      return res.status(404).json({ message: "Student not found!", data: {} });
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+exports.studentParamRoute = async (req, res, next) => {
+  const _id = req.params.id;
+  try {
+    const student = await Students.findOne({ _id, $or: req.group_or })
+      .populate("personal_data", "name email _id status")
+      .populate({
+        path: "group",
+        select: "faculty department _id status group_admin",
+        populate: { path: "group_admin", select: "name email status _id" },
+      })
+      .exec();
+    if (!student)
+      return res.status(404).json({ message: "Student not found", data: {} });
+    req.student = student;
+    return next();
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.getOneStudent = function (req, res, next) {
   return res.status(200).json({ message: "", data: req.student });
 };
-exports.deleteStudent = function (req, res, next) {
-  Users.findByIdAndRemove(req.student.personal_data._id)
-    .then(function (removed) {
-      return req.student.remove();
-    })
-    .then(function (removed) {
-      res
-        .status(200)
-        .json({ message: "Student removed successfully!", data: removed });
-    })
-    .catch(function (err) {
-      return next(err);
-    });
+exports.deleteStudent = (req, res, next) => {
+  req.params.id = req.student.personal_data._id;
+  userStateToggle(req, res, next, "Student blocked", false, "student");
+};
+exports.updateStudent = (req, res, next) => {
+  req.params.id = req.student.personal_data._id;
+  userStateToggle(req, res, next, "Student unblocked", true, "student");
 };
 
 /**
  * Course Operations
  */
-exports.getCourses = function (req, res, next) {
-  Course.find(req.query)
-    .populate("added_by", "faculty department _id")
-    .populate("lecturer", "_id name email")
-    .exec()
-    .then(function (courses) {
-      res.status(200).json({ message: "", data: courses });
+exports.getCourses = async (req, res, next) => {
+  req.group_or = req.group_or.reduce(
+    (acc, cur) => [...acc, { added_by: cur.group }],
+    []
+  );
+  try {
+    const courses = await Course.find({
+      $or: [{ status: true }, ...req.group_or],
     })
-    .catch(function (err) {
-      return next(err);
-    });
-};
-exports.addCourse = function (req, res, next) {
-  req.validate({
-    course: "string|required",
-    units: "number|required",
-    faculty: "string|required",
-    department: "string|required",
-    semester: "number|required",
-    level: "number|required",
-    lecturer: "string",
-  }) &&
-    Group.findOne({
-      faculty: req.body.faculty,
-      department: req.body.department,
-    })
-      .then(function (group) {
-        if (group) {
-          req.body.course = req.body.course.toUpperCase();
-          req.body.added_by = group._id;
-          return group;
-        }
-        res.status(404).json({
-          message: "Invalid faculty or department provided",
-          data: {},
-        });
+      .populate({
+        path: "added_by",
+        select: "faculty department status _id group_admin",
+        populate: {
+          path: "group_admin",
+          select: "name email _id status",
+        },
       })
-      .then(function (group) {
-        if (group) return Course.create(req.body);
-      })
-      .then(function (created) {
-        res.status(200).json({ message: "Course created!", data: created });
-        if (req.body.lecturer) {
-          Utils.notify(
-            req.body.lecturer,
-            `${created.course} has been assigned to you.`
-          );
-        }
-      })
-      .catch(function (err) {
-        return next(err);
+      .populate({
+        path: "lecturer",
+        select: "personal_info _id group",
+        populate: {
+          path: "group personal_info",
+          select: "faculty name email department _id status group_admin",
+          populate: { path: "group_admin", select: "name email _id status" },
+        },
       });
+    return res.status(200).json({ message: "", data: courses });
+  } catch (e) {
+    return next(e);
+  }
+};
+exports.addCourse = async (req, res, next) => {
+  if (
+    !req.validate({
+      course: "string|required",
+      title: "string|required",
+      units: "number|required",
+      faculty: "string|required",
+      department: "string|required",
+      semester: "number|required",
+      level: "number|required",
+      lecturer: "string",
+    })
+  )
+    return;
+  req.body.course = req.body.course.toUpperCase();
+  const { department, faculty, course, title } = req.body;
+  try {
+    const validateGroup = await Group.findOne({
+      faculty,
+      department,
+    });
+    if (!validateGroup)
+      return res.status(404).json({
+        message: "Invalid faculty or department provided",
+        data: {},
+      });
+    const dupCourse = await Course.findOne({ $or: [{ course }, { title }] });
+    if (dupCourse)
+      return res
+        .status(404)
+        .json({ message: "Duplicate courses not allowed", data: {} });
+    const created = await Course.create({
+      ...req.body,
+      added_by: validateGroup._id,
+    });
+    if (req.body.lecturer) {
+      await Utils.notify(
+        req.body.lecturer,
+        `${created.course} has been assigned to you.`
+      );
+    }
+    return res.status(200).json({ message: "Course created!", data: created });
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.getOneCourse = function (attachToReq = false) {
   return function (req, res, next) {
-    var id = req.params.id;
-    Course.findById(id)
-      .populate("added_by", "faculty department _id")
-      .populate("lecturer", "personal_info")
-      .populate("personal_info", "name _id email")
+    req.group_or = req.group_or.reduce(
+      (acc, cur) => [...acc, { added_by: cur.group }],
+      []
+    );
+    var _id = req.params.id;
+    Course.findOne({ _id, $or: [{ status: true }, ...req.group_or] })
+      .populate({
+        path: "added_by",
+        select: "faculty department _id status group_admin",
+        populate: { path: "group_admin", select: "name email _id status" },
+      })
+      .populate({
+        path: "lecturer",
+        select: "personal_info group",
+        populate: {
+          path: "personal_info group",
+          select: "name email _id status faculty department group_admin",
+          populate: { path: "group_admin", select: "name email status _id" },
+        },
+      })
       .exec(function (err, course) {
         if (err) return next(err);
         if (course && attachToReq) {
@@ -404,11 +477,19 @@ exports.getOneCourse = function (attachToReq = false) {
       });
   };
 };
-exports.deleteCourse = function (req, res, next) {
-  req.course.remove(function (err, removed) {
-    if (err) return next(err);
-    return res.status(200).json({ message: "Course deleted!", data: removed });
-  });
+exports.deleteCourse = async (req, res, next) => {
+  if (!_.find(req.assigned_groups, { _id: req.course.added_by._id }))
+    return res.status(403).json({
+      message: "You cannot block this course",
+      data: {},
+    });
+  req.course.status = false;
+  try {
+    const course = await req.course.save();
+    return res.status(200).json({ message: "Course blocked", data: course });
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.updateCourse = function (req, res, next) {
   if (
@@ -433,7 +514,7 @@ exports.updateCourse = function (req, res, next) {
       department: req.body.department,
     })
       .then(function (group) {
-        if (group) {
+        if (group && _.find(req.assigned_groups, { _id: group._id })) {
           req.body.added_by = group._id;
           return group;
         }
@@ -1067,22 +1148,37 @@ exports.save_result = async (req, res, next) => {
 /**
  * Group Courses' Operations
  */
-exports.getGroupCourses = function (req, res, next) {
-  if (req.query.course_type)
-    req.query.course_type = req.query.course_type.toUpperCase() === "CORE";
-  GroupCourse.find(req.query)
-    .populate("course", "course _id units level semester lecturer")
-    .populate("lecturer", "name _id email")
-    .populate("group", "_id faculty department")
-    .exec(function (err, courses) {
-      if (err) return next(err);
-      var results = [];
-      courses.forEach(function (course) {
-        if (_.find(req.assigned_groups, { _id: course.group._id }))
-          results.push(course.toJson());
-      });
-      return res.status(200).json({ message: "", data: results });
-    });
+const groupCoursePopulated = async (query) => {
+  try {
+    return query
+      .populate({
+        path: "course group",
+        select:
+          "course _id title units level semester lecturer faculty department status group_admin",
+        populate: {
+          path: "lecturer group_admin",
+          select: "personal_info group name email status _id",
+          populate: {
+            path: "personal_info group",
+            select: "name email status _id faculty department group_admin",
+            populate: { path: "group_admin", select: "name email status _id" },
+          },
+        },
+      })
+      .exec();
+  } catch (e) {
+    throw e;
+  }
+};
+exports.getGroupCourses = async (req, res, next) => {
+  try {
+    const courses = await groupCoursePopulated(
+      GroupCourse.find({ $or: req.group_or })
+    );
+    return res.status(200).json({ message: "", data: courses });
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.createGroupCourse = function (req, res, next) {
   if (
@@ -1102,8 +1198,8 @@ exports.createGroupCourse = function (req, res, next) {
   })
     .then(function (course) {
       if (course) {
-        res.json({ message: "Course already exists!", data: {} }).status(400);
-        return false;
+        course.course_type = req.body.course_type;
+        return course.save();
       }
       return GroupCourse.create({
         course: req.course._id,
@@ -1112,47 +1208,44 @@ exports.createGroupCourse = function (req, res, next) {
         student_set: req.body.student_set,
       });
     })
-    .then(function (created) {
-      if (created)
-        return res
-          .status(200)
-          .json({ message: "Group course added!", data: created.toJson() });
+    .then(function (course) {
+      return groupCoursePopulated(GroupCourse.findById(course._id));
     })
+    .then((created) =>
+      res.status(200).json({ message: "Group course added!", data: created })
+    )
     .catch(function (err) {
       return next(err);
     });
 };
 exports.getOneGroupCourse = function (attachToReq = false) {
   return function (req, res, next) {
-    var id = req.params.id;
-    GroupCourse.findById(id)
-      .populate("course", "_id course units semester level")
-      .populate("group", "_id faculty department")
-      .exec(function (err, course) {
-        if (err) return next(err);
+    var _id = req.params.id;
+    groupCoursePopulated(GroupCourse.findOne({ _id, $or: req.group_or }))
+      .then(function (course) {
         if (course) {
-          if (_.find(req.assigned_groups, { _id: course.group._id })) {
-            if (attachToReq) {
-              req.group_course = course;
-              return next();
-            }
-            return res.status(200).json({ message: "", data: course.toJson() });
+          if (attachToReq) {
+            req.group_course = course;
+            return next();
           }
-          return res
-            .status(403)
-            .json({ message: "You don't the permissions for this.", data: {} });
+          return res.status(200).json({ message: "", data: course });
         }
         return res.status(200).json({ message: "Course not found!", data: {} });
-      });
+      })
+      .catch((err) => next(err));
   };
 };
-exports.deleteGroupCourse = function (req, res, next) {
-  req.group_course.remove(function (err, deleted) {
-    if (err) return next(err);
-    return res
-      .status(200)
-      .json({ message: "Course deleted!", data: deleted.toJson() });
-  });
+exports.deleteGroupCourse = async (req, res, next) => {
+  req.group_course.status = false;
+  try {
+    const course = await req.group_course.save();
+    return res.status(200).json({
+      message: "Course blocked!",
+      data: await groupCoursePopulated(GroupCourse.findById(course._id)),
+    });
+  } catch (e) {
+    return next(e);
+  }
 };
 exports.updateGroupCourse = function (req, res, next) {
   if (req.body.group) delete req.body.group;
@@ -1178,10 +1271,9 @@ exports.updateGroupCourse = function (req, res, next) {
       _.merge(req.group_course, req.body);
       return req.group_course.save();
     })
+    .then((course) => groupCoursePopulated(GroupCourse.findById(course._id)))
     .then(function (saved) {
-      res
-        .status(200)
-        .json({ message: "Course updated!", data: saved.toJson() });
+      return res.status(200).json({ message: "Course updated!", data: saved });
     })
     .catch(function (err) {
       return next();
@@ -1207,7 +1299,10 @@ exports.createGroupAdmin = function (req, res, next) {
   )
     return;
   var user = req.body;
-  Invites.findById(req.body.invite_token, function (err, invite) {
+  Invites.findOne({ _id: req.body.invite_token, status: 0 }, function (
+    err,
+    invite
+  ) {
     if (err)
       return res
         .status(400)
@@ -1222,7 +1317,8 @@ exports.createGroupAdmin = function (req, res, next) {
         if (err) return next(err);
         var access_token = SignToken(created._id);
         user = _.merge(created.toJson(), { access_token });
-        invite.remove();
+        invite.status = 1;
+        invite.save();
         return res.status(200).json({
           message: "Signup successful!",
           data: user,
@@ -1235,6 +1331,7 @@ exports.createGroupAdmin = function (req, res, next) {
 exports.updateAdmin = function (req, res, next) {
   if (req.body.id) delete req.body.id;
   if (req.body.user_role) delete req.body.user_role;
+  if (req.body.status) delete req.body.status;
   _.merge(req.user, req.body);
   req.user.save(function (err, saved) {
     if (err) return next(err);

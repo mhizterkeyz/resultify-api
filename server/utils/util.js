@@ -2,6 +2,8 @@ const Notification = require("../api/models/notificationModel");
 exports.validateGradeSystem = function (gs = "") {
   gs = gs.split(",");
   var invalid = false;
+  var prev = false;
+  var cur = false;
   var result = {};
   gs.map(function (elem) {
     elem = elem.split("|");
@@ -24,9 +26,20 @@ exports.validateGradeSystem = function (gs = "") {
       min: parseInt(elem[2]),
       max: parseInt(elem[3]),
     };
+    cur = result[elem[0].toString().toLowerCase()];
+    if (
+      prev &&
+      (cur.points >= prev.points ||
+        cur.max + 1 !== prev.min ||
+        cur.min + 1 >= prev.max)
+    ) {
+      invalid = true;
+      return false;
+    }
+    prev = cur;
     return result[elem[0].toString().toLowerCase()];
   });
-  if (invalid) return false;
+  if (invalid || cur.min !== 0) return false;
   return result;
 };
 exports.getGradeData = (score, gradeSystem) => {

@@ -32,7 +32,7 @@ exports.getFreshUser = function () {
     try {
       const user = await User.findOne({
         status: true,
-        user_role: "administrator",
+        user_role: "groupAdministrator",
       });
       req.user = user;
       return next();

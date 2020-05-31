@@ -7,6 +7,11 @@ var CoursesSchema = new Schema({
     required: true,
     unique: true,
   },
+  title: {
+    type: String,
+    required: true,
+    unique: true,
+  },
   units: {
     type: Number,
     required: true,
@@ -20,25 +25,30 @@ var CoursesSchema = new Schema({
     type: Number,
     required: true,
   },
+  status: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
   level: {
     type: Number,
     required: true,
   },
   lecturer: {
     type: Schema.Types.ObjectId,
-    ref: "Users",
+    ref: "lecturers",
   },
 });
 
 CoursesSchema.pre("save", function (next) {
   if (this.lecturer) {
-    Lecturers.find({ personal_info: this.lecturer }, function (err, lecturer) {
+    return Lecturers.findOne(this.lecturer, function (err, lecturer) {
       if (err) return next(err);
-      this.lecturer = lecturer._id;
-      next();
+      if (!lecturer) return next(new Error("Invalid lecturer ID"));
+      return next();
     });
   }
-  next();
+  return next();
 });
 
 module.exports = model("courses", CoursesSchema);

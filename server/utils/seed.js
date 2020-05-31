@@ -26,27 +26,14 @@ var users = [
     lga: "Olamaboro",
     address: "Earth",
     phone: 234801112222,
-    root: true,
-  },
-  {
-    name: "Mr. George McReynolds",
-    username: "admin2",
-    password: "12345678",
-    email: "george2@gmail.com",
-    user_role: "groupAdministrator",
-    state_of_origin: "Kogi",
-    lga: "Olamaboro",
-    address: "Earth",
-    phone: 234801112222,
-    root: false,
-    status: true,
   },
 ];
 const invites = [
   {
     email: "jamal@gmail.com",
-    role: "administrator",
+    role: "groupAdministrator",
     created_at: Date.now(),
+    status: 3,
   },
 ];
 
@@ -85,6 +72,64 @@ cleanDb()
       )
     );
   })
+  .then(() =>
+    (async () => {
+      try {
+        const groupAdministrator = await User.create({
+          ...users[0],
+          user_role: "groupAdministrator",
+          username: "groupAdministrator",
+          email: "group@gmail.com",
+        });
+        const group = await InstitutionalGroups.create({
+          faculty: "natural sciences",
+          department: "mathematical sciences",
+          group_admin: groupAdministrator._id,
+        });
+        const lecturer_user = await User.create({
+          ...users[0],
+          user_role: "lecturer",
+          username: "lecturer",
+          email: "lecturer@gmail.com",
+        });
+        const lecturer = await Lecturers.create({
+          personal_info: lecturer_user._id,
+          group: group._id,
+        });
+        const student_user = await User.create({
+          ...users[0],
+          user_role: "student",
+          username: "student",
+          email: "student@gmail.com",
+        });
+        const date = new Date().getFullYear();
+        const student = await Students.create({
+          personal_data: student_user._id,
+          group: group._id,
+          matric: "16MS1001",
+          entry_year: date,
+          student_set: date,
+        });
+        const course = await Courses.create({
+          course: "MAT 101",
+          units: 3,
+          title: "Fundamental mathematics I",
+          added_by: group._id,
+          semester: 1,
+          level: 100,
+          lecturer: lecturer._id,
+        });
+        const groupCourse = await GroupCourses.create({
+          course: course._id,
+          course_type: true,
+          group: group._id,
+          student_set: date,
+        });
+      } catch (e) {
+        logger.error(e.stack);
+      }
+    })()
+  )
   .catch(function (err) {
     logger.error(err.stack);
   });

@@ -146,7 +146,10 @@ exports.createAppAdmin = function (req, res, next) {
   )
     return;
   var user = req.body;
-  Invites.findById(req.body.invite_token, function (err, invite) {
+  Invites.findOne({ _id: req.body.invite_token, status: 0 }, function (
+    err,
+    invite
+  ) {
     if (err)
       return res
         .status(400)
